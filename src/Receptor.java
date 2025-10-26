@@ -1,78 +1,57 @@
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
-import java.net.ServerSocket;
-import java.net.Socket;
+import java.io.*;
+import java.net.*;
+import java.util.Scanner;
 
 public class Receptor {
-
     public static void main(String[] args) {
-        int porta = 12345;
+        Scanner teclado = new Scanner(System.in);
 
-        try (ServerSocket servidor = new ServerSocket(porta)) {
+        try {
+            System.out.print("[R] Digite a porta para este servidor: ");
+            int porta = teclado.nextInt();
+
+            ServerSocket servidor = new ServerSocket(porta);
             System.out.println("[R] Servidor Receptor iniciado na porta " + porta);
 
             while (true) {
                 Socket conexao = servidor.accept();
-                System.out.println("[R] Nova conexão recebida de " + conexao.getInetAddress().getHostAddress());
+                System.out.println("[R] Cliente conectado: " + conexao.getInetAddress().getHostAddress());
 
-                Thread t = new Thread(new Atendente(conexao));
-                t.start();
-            }
-        } catch (Exception erro) {
-            System.err.println("[R] Erro no servidor: " + erro.getMessage());
-            erro.printStackTrace();
-        }
-    }
-}
+                ObjectOutputStream transmissor = new ObjectOutputStream(conexao.getOutputStream());
+                ObjectInputStream receptor = new ObjectInputStream(conexao.getInputStream());
 
-class Atendente implements Runnable {
+                try {
+                    while (true) {
+                        Object obj = receptor.readObject();
 
-    private Socket conexao;
-    private ObjectInputStream receptor;
-    private ObjectOutputStream transmissor;
+                        if (obj instanceof Pedido) {
+                            Pedido pedido = (Pedido) obj;
+                            System.out.println("[R] Pedido recebido. Contando...");
+                            int resultado = pedido.contar();
 
-    public Atendente(Socket conexao) {
-        this.conexao = conexao;
-    }
-
-    @Override
-    public void run() {
-        try {
-            transmissor = new ObjectOutputStream(conexao.getOutputStream());
-            receptor = new ObjectInputStream(conexao.getInputStream());
-
-            while (true) {
-                Object obj = receptor.readObject();
-
-                if (obj instanceof Pedido) {
-                    Pedido pedido = (Pedido) obj;
-                    int contagem = pedido.contar();
-
-                    transmissor.writeObject(new Resposta(contagem));
-                    transmissor.flush();
-
-                    System.out.println("[R] Contagem enviada: " + contagem);
-                } else if (obj instanceof ComunicadoEncerramento) {
-                    System.out.println("[R] Encerrando conexão com cliente...");
-                    break;
-                } else {
-                    System.out.println("[R] Objeto desconhecido recebido: " + obj.getClass().getName());
+                            Resposta resposta = new Resposta(resultado);
+                            transmissor.writeObject(resposta);
+                            transmissor.flush();
+                            System.out.println("[R] Resposta enviada: " + resultado);
+                        } 
+                        else if (obj instanceof ComunicadoEncerramento) {
+                            System.out.println("[R] Recebido Comunicado de Encerramento. Fechando conexão...");
+                            transmissor.close();
+                            receptor.close();
+                            conexao.close();
+                            break;
+                        }
+                    }
+                } 
+                catch (Exception e) {
+                    System.err.println("[R] Erro na conexão com cliente: " + e.getMessage());
                 }
             }
-        } catch (java.io.EOFException eof) {
-            System.out.println("[R] Cliente fechou a conexão.");
-        } catch (Exception erro) {
-            System.err.println("[R] Erro na conexão: " + erro.getMessage());
-            erro.printStackTrace();
-        } finally {
-            try {
-                if (receptor != null) receptor.close();
-                if (transmissor != null) transmissor.close();
-                if (conexao != null) conexao.close();
-            } catch (Exception e) {
-                // ignorar
-            }
-            System.out.println("[R] Conexão finalizada.");
+        } 
+        catch (Exception e) {
+            System.err.println("[R] Erro no servidor: " + e.getMessage());
         }
+
+        teclado.close();
     }
 }
